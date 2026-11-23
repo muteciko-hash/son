@@ -556,3 +556,132 @@ $('dq').addEventListener('keydown',function(e){if(e.keyCode===13)searchDest()});
 $('dest').addEventListener('click',function(e){e.stopPropagation()});
 $('pal').addEventListener('click',function(e){e.stopPropagation()});
 window.addEventListener('resize',function(){buildStrip();if(MAP){MAP.invalidateSize();mapPos()}});
+/* ===== RADYO (Radio Browser) ===== */
+var RAD={list:[],i:-1,aud:new Audio(),on:false,err:0,busy:false};
+RAD.aud.preload='none';
+RAD.aud.addEventListener('playing',function(){RAD.err=0;document.body.classList.add('play');$('pp').textContent='❚❚'});
+RAD.aud.addEventListener('pause',function(){document.body.classList.remove('play');$('pp').textContent='▶'});
+RAD.aud.addEventListener('error',function(){
+ if(!RAD.on||!RAD.list.length)return;
+ if(++RAD.err>8){RAD.on=false;toast('RADYO BAĞLANAMADI');return}
+ setTimeout(function(){radPlay(RAD.i+1)},700)});
+var RHOSTS=['de1','at1','nl1','fr1'];
+function radLoad(cb,k){
+ k=k||0;
+ if(RAD.list.length){cb();return}
+ if(k>=RHOSTS.length){toast('RADYO LİSTESİ ALINAMADI');RAD.busy=false;return}
+ fetch('https://'+RHOSTS[k]+'.api.radio-browser.info/json/stations/search?countrycode=TR&order=clickcount&reverse=true&limit=80&hidebroken=true')
+ .then(function(r){return r.json()}).then(function(a){
+  var seen={},out=[];
+  a.forEach(function(s){
+   var u=s.url_resolved||'',n=(s.name||'').trim(),key=n.toLowerCase();
+   if(u.indexOf('https')!==0||!n||seen[key]||s.lastcheckok===0)return;
+   seen[key]=1;out.push(s)});
+  if(!out.length){radLoad(cb,k+1);return}
+  RAD.list=out.slice(0,40);cb()
+ }).catch(function(){radLoad(cb,k+1)})}
+function radScan(done){
+ var r=$('radio'),n=0,len=RAD.list.length;
+ r.classList.add('scan');
+ var t=setInterval(function(){
+  $('stName').textContent=RAD.list[(RAD.i+1+n)%len].name;
+  $('stSong').textContent='KANAL TARANIYOR…';
+  if(++n>=8){clearInterval(t);r.classList.remove('scan');done()}
+ },130)}
+function radPlay(i){
+ var len=RAD.list.length;if(!len)return;
+ RAD.i=((i%len)+len)%len;
+ var s=RAD.list[RAD.i];
+ $('stName').textContent=s.name;
+ var tg=(s.tags||'').split(',').filter(function(x){return x}).slice(0,3).join(' · ');
+ $('stSong').textContent=(tg||'CANLI YAYIN')+(s.bitrate?' · '+s.bitrate+' KBPS':'');
+ RAD.on=true;
+ RAD.aud.src=s.url_resolved;
+ var p=RAD.aud.play();
+ if(p&&p.catch)p.catch(function(){});
+ ls('tp_st',s.stationuuid)}
+function radStart(){
+ if(RAD.busy)return;
+ RAD.busy=true;
+ $('stSong').textContent='KANAL TARANIYOR…';
+ radLoad(function(){
+  RAD.busy=false;
+  var last=ls('tp_st'),idx=0,i;
+  for(i=0;i<RAD.list.length;i++)if(RAD.list[i].stationuuid===last)idx=i;
+  RAD.i=idx-1;
+  radScan(function(){radPlay(idx)})})}
+function radNext(){
+ if(!RAD.list.length){radStart();return}
+ if(RAD.busy)return;
+ RAD.busy=true;
+ radScan(function(){RAD.busy=false;radPlay(RAD.i+1)})}
+function radToggle(){
+ if(!RAD.list.length){radStart();return}
+ if(RAD.aud.paused){RAD.on=true;var p=RAD.aud.play();if(p&&p.catch)p.catch(function(){})}
+ else{RAD.on=false;RAD.aud.pause()}}
+bind('pp',radToggle);
+
+/* ===== HIZ ÇİZGİLERİ ===== */
+var SLc=$('sl'),SLx=SLc.getContext('2d'),SLp=[],SLw=0,SLh=0,SLcol='#ff2a2a',SLt=0,SLn=0;
+function slSize(){SLw=SLc.width=window.innerWidth;SLh=SLc.height=window.innerHeight}
+function slInit(){
+ slSize();
+ for(var i=0;i<46;i++)SLp.push({a:Math.random()*6.283,r:Math.random(),v:.004+Math.random()*.01})}
+function slDraw(){
+ requestAnimationFrame(slDraw);
+ var now=Date.now();
+ if(now-SLt<33)return;
+ SLt=now;
+ SLx.clearRect(0,0,SLw,SLh);
+ var kmh=S.spd*3.6;
+ if(kmh<25)return;
+ if(++SLn%45===1)SLcol=(getComputedStyle(document.documentElement).getPropertyValue('--ac')||'#ff2a2a').trim();
+ var k=Math.min(1,(kmh-25)/80),cx=SLw*.62,cy=SLh*.52,R=Math.sqrt(SLw*SLw+SLh*SLh)/2,i,p,r0,len,ca,sa;
+ SLx.strokeStyle=SLcol;SLx.lineWidth=1.5;SLx.globalAlpha=.3+.4*k;
+ SLx.beginPath();
+ for(i=0;i<SLp.length;i++){
+  p=SLp[i];
+  p.r+=p.v*(.5+k*2);
+  if(p.r>1){p.r=.05;p.a=Math.random()*6.283}
+  r0=R*(.3+.7*p.r*p.r);
+  len=R*.05*(.5+k*2)*p.r;
+  ca=Math.cos(p.a);sa=Math.sin(p.a);
+  SLx.moveTo(cx+ca*r0,cy+sa*r0);
+  SLx.lineTo(cx+ca*(r0+len),cy+sa*(r0+len))}
+ SLx.stroke()}
+
+/* ===== MOLA MODU ===== */
+bind('bml',function(){$('mola').classList.add('on')});
+$('mola').addEventListener('click',function(e){e.stopPropagation();$('mola').classList.remove('on')});
+
+/* ===== EKRANA DOKUNMA =====
+   harita bölgesine dokun  -> harita modu değişir
+   diğer her yere dokun    -> sonraki radyo kanalı */
+document.addEventListener('click',function(e){
+ if(inMapZone(e.clientX,e.clientY))cycleMap();
+ else radNext()});
+
+/* ===== EKRAN AÇIK KALSIN ===== */
+function wake(){
+ try{
+  if(navigator.wakeLock&&document.visibilityState==='visible')
+   navigator.wakeLock.request('screen').catch(function(){})
+ }catch(e){}}
+document.addEventListener('visibilitychange',wake);
+document.addEventListener('click',wake);
+
+/* ===== BAŞLAT ===== */
+(function init(){
+ var t=ls('tp_theme');if(t)S.theme=t;
+ buildPal();applyTheme();
+ var z=parseInt(ls('tp_zoom'),10);if(z>=0&&z<=2)LI=z;
+ $('zl').textContent=LN[LI];
+ var m=parseInt(ls('tp_map'),10);setMap(m>=0&&m<=2?m:0);
+ buildStrip();tick();setInterval(tick,1000);
+ initMap();loop();startGPS();hello();
+ slInit();slDraw();wake();
+ window.addEventListener('resize',slSize)
+})();
+</script>
+</body>
+</html>
